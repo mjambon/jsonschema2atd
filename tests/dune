@@ -1,6 +1,7 @@
 (tests
  (names
   all_of
+  any_of
   base
   defaults
   enums

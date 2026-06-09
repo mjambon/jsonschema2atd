@@ -13,3 +13,9 @@ let assert_schema input output =
     ~printer:(fun str -> str)
     output
     (Generator.make_atd_of_openapi (openapi_json_template input))
+
+let assert_jsonschema input output =
+  assert_equal ~cmp:test_strings_cmp
+    ~printer:(fun str -> str)
+    output
+    (Generator.make_atd_of_jsonschema input)

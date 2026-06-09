@@ -49,9 +49,8 @@ let define_type state ~doc ~name ~type_ =
 
 let process_int_type _state schema =
   match schema.format with
-  | None | Some `Int32 | Some `UnixTime | Some `Enum -> "int"
-  | Some `Int64 -> "int64"
-  | _ -> failwith "int has unexpected format"
+  | Some "int64" -> "int64"
+  | _ -> "int"
 
 let get_ref_name ref =
   let uri, pointer =
@@ -180,6 +179,9 @@ let rec process_schema_type state ~ancestors (input_schema : schema) =
   match schema.one_of with
   | Some schemas -> process_one_of state ~ancestors schemas
   | None ->
+  match schema.any_of with
+  | Some schemas -> process_one_of state ~ancestors schemas
+  | None ->
   match schema.enum, schema.typ with
   | Some enums, (Some String | None) -> process_string_enums state enums
   | Some _, Some Integer ->
@@ -224,7 +226,7 @@ and process_array_type state ~ancestors schema =
 
 and process_nested_schema_type state ~ancestors schema =
   match merge_all_of schema with
-  | { one_of = Some _; _ } | { typ = Some Object; properties = Some _; _ } | { enum = Some _; _ } ->
+  | { one_of = Some _; _ } | { any_of = Some _; _ } | { typ = Some Object; properties = Some _; _ } | { enum = Some _; _ } ->
     let nested_type_name = concat_camelCase (List.rev ancestors) in
     let nested =
       define_type state ~name:nested_type_name

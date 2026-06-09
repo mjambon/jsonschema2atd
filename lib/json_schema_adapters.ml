@@ -1,6 +1,9 @@
 module Or_ref = struct
+  (* In JSON Schema draft-07, a $ref overrides any sibling keywords. We treat
+     any object containing "$ref" as a pure reference, ignoring other fields. *)
   let normalize = function
-    | `Assoc [ ("$ref", ref) ] -> `List [ `String "Ref"; ref ]
+    | `Assoc kvs when List.mem_assoc "$ref" kvs ->
+        `List [ `String "Ref"; List.assoc "$ref" kvs ]
     | obj -> `List [ `String "Obj"; obj ]
 
   let restore = function
