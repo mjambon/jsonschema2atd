@@ -109,7 +109,7 @@ let rec ocaml_value_of_json ~typ = function
 
 let make_atd_default_value ~typ enum json_value =
   match enum, json_value with
-  | Some _, `String default_enum -> sprintf "`%s" (variant_name default_enum)
+  | Some _, `String default_enum -> variant_name default_enum
   | Some _, json ->
     failwith (sprintf "only string enum default values are supported, can't process: %s" (Yojson.Basic.to_string json))
   | None, json -> ocaml_value_of_json ~typ json
