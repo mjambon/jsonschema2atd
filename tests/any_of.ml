@@ -110,6 +110,56 @@ let additional_properties_false_test _ =
   in
   assert_jsonschema input output
 
+let object_title_variant_test _ =
+  (* Object variants use title field for the variant name *)
+  let input =
+    {|{
+  "title": "choice",
+  "oneOf": [
+    {"type": "object", "title": "Foo", "properties": {"x": {"type": "string"}}},
+    {"type": "object", "title": "Bar", "properties": {"y": {"type": "integer"}}}
+  ]
+}|}
+  in
+  let output =
+    {|type choiceFoo = {
+  ?x : string option;
+}
+type choiceBar = {
+  ?y : int option;
+}
+type choice = [
+  | Foo of choiceFoo
+  | Bar of choiceBar
+] <json adapter.ocaml="Jsonschema2atd_runtime.Adapter.One_of">|}
+  in
+  assert_jsonschema input output
+
+let duplicate_title_dedup_test _ =
+  (* When two object variants share a title, names get _1 and _2 suffixes *)
+  let input =
+    {|{
+  "title": "choice",
+  "oneOf": [
+    {"type": "object", "title": "Item", "properties": {"x": {"type": "string"}}},
+    {"type": "object", "title": "Item", "properties": {"y": {"type": "integer"}}}
+  ]
+}|}
+  in
+  let output =
+    {|type choiceItem_1 = {
+  ?x : string option;
+}
+type choiceItem_2 = {
+  ?y : int option;
+}
+type choice = [
+  | Item_1 of choiceItem_1
+  | Item_2 of choiceItem_2
+] <json adapter.ocaml="Jsonschema2atd_runtime.Adapter.One_of">|}
+  in
+  assert_jsonschema input output
+
 let suite =
   "AnyOf"
   >::: [
@@ -118,6 +168,8 @@ let suite =
          "mixed $ref and title" >:: mixed_ref_and_title_test;
          "unknown format" >:: unknown_format_test;
          "additionalProperties false" >:: additional_properties_false_test;
+         "object variant title naming" >:: object_title_variant_test;
+         "duplicate title dedup" >:: duplicate_title_dedup_test;
        ]
 
 let () = run_test_tt_main suite

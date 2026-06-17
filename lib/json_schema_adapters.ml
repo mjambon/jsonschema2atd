@@ -4,6 +4,11 @@ module Or_ref = struct
   let normalize = function
     | `Assoc kvs when List.mem_assoc "$ref" kvs ->
         `List [ `String "Ref"; List.assoc "$ref" kvs ]
+    | `List _ ->
+        (* Draft-07 allows `items` to be an array of schemas (tuple validation).
+           We don't support tuple types in ATD, so fall back to an empty schema
+           which the generator maps to `json`. *)
+        `List [ `String "Obj"; `Assoc [] ]
     | obj -> `List [ `String "Obj"; obj ]
 
   let restore = function

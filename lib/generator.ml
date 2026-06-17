@@ -32,7 +32,8 @@ let define_type state ~doc ~name ~type_ =
     | None -> ""
     | Some doc -> doc_annotation state doc
   in
-  let out () = sprintf "type %s = %s %s\n" (type_name name) type_ doc in
+  let doc_prefix = if doc = "" then "" else doc ^ " " in
+  let out () = sprintf "type %s %s= %s\n" (type_name name) doc_prefix type_ in
   begin
     match state.protect_against_duplicates with
     | None -> out ()
@@ -173,6 +174,22 @@ let merge_all_of schema =
       nullable = schemas |> List.exists (fun schema -> schema.nullable);
     }
 
+let dedup_names names =
+  let counts = Hashtbl.create 8 in
+  List.iter (fun name ->
+    let n = try Hashtbl.find counts name with Not_found -> 0 in
+    Hashtbl.replace counts name (n + 1)
+  ) names;
+  let seen = Hashtbl.create 8 in
+  List.map (fun name ->
+    if Hashtbl.find counts name = 1 then name
+    else begin
+      let n = try Hashtbl.find seen name with Not_found -> 1 in
+      Hashtbl.replace seen name (n + 1);
+      sprintf "%s_%d" name n
+    end
+  ) names
+
 let rec process_schema_type state ~ancestors (input_schema : schema) =
   let schema = merge_all_of input_schema in
   let maybe_nullable type_ = if schema.nullable then nullable type_ else type_ in
@@ -221,7 +238,16 @@ let rec process_schema_type state ~ancestors (input_schema : schema) =
 
 and process_array_type state ~ancestors schema =
   match schema.items with
-  | Some schema_or_ref -> [ make_type_from_schema_or_ref state ~ancestors schema_or_ref; "list" ]
+  | Some schema_or_ref ->
+    (* When ancestors has ≤1 element, make_type_from_schema_or_ref would call
+       process_schema_type (inline) instead of process_nested_schema_type (hoisted),
+       producing an inline Sum/Record that atdml doesn't accept. Add "items" to
+       force the hoisting path without changing names for deeper nesting. *)
+    let item_ancestors = match ancestors with
+      | ([] | [_]) -> "items" :: ancestors
+      | _ -> ancestors
+    in
+    [ make_type_from_schema_or_ref state ~ancestors:item_ancestors schema_or_ref; "list" ]
   | None -> failwith "items is not specified for array"
 
 and process_nested_schema_type state ~ancestors schema =
@@ -268,6 +294,13 @@ and make_type_from_schema_or_ref state ~ancestors (schema_or_ref : schema or_ref
   | Obj schema, ([] | [ _ ]) -> process_schema_type state ~ancestors schema
   | Obj schema, ancestors -> process_nested_schema_type state ~ancestors schema
   | Ref ref_, _ -> begin
+    let is_external =
+      match String.split_on_char '#' ref_ with
+      | uri :: _ -> uri <> ""
+      | [] -> false
+    in
+    if is_external then sprintf "json (* %s *)" ref_
+    else
     match
       (not state.avoid_dangling_refs)
       || List.exists (fun (name, _schema) -> String.equal (get_ref_name ref_) name) !input_toplevel_schemas
@@ -280,17 +313,29 @@ and process_one_of state ~ancestors (schemas_or_refs : schema or_ref list) =
   let determine_variant_name = function
     | Ref ref_ -> variant_name (get_ref_name ref_)
     | Obj schema ->
-    match (merge_all_of schema).typ with
-    | Some Array -> concat_camelCase (process_array_type state ~ancestors schema)
-    | Some Object -> "Json"
-    | _ -> variant_name (process_schema_type state ~ancestors schema)
+      let merged = merge_all_of schema in
+      (match merged.typ with
+      | Some Array ->
+        let parts = process_array_type state ~ancestors schema in
+        (* Strip inline comments (e.g. "json (* ... *)") — keep only the first word *)
+        let first_word s = match String.index_opt s ' ' with Some i -> String.sub s 0 i | None -> s in
+        concat_camelCase (List.map first_word parts)
+      | Some Object ->
+        (match merged.title with
+        | Some title -> variant_name title
+        | None -> "Json")
+      | _ -> variant_name (process_schema_type state ~ancestors schema))
   in
-  let make_one_of_variant schema_or_ref =
-    let variant_name = determine_variant_name schema_or_ref in
-    sprintf "  | %s of %s" variant_name
-      (make_type_from_schema_or_ref state ~ancestors:(variant_name :: ancestors) schema_or_ref)
+  let raw_names = List.map determine_variant_name schemas_or_refs in
+  let unique_names = dedup_names raw_names in
+  let make_one_of_variant (vname, schema_or_ref) =
+    sprintf "  | %s of %s" vname
+      (make_type_from_schema_or_ref state ~ancestors:(vname :: ancestors) schema_or_ref)
   in
-  let variants = List.map make_one_of_variant schemas_or_refs |> String.concat "\n" in
+  let variants =
+    List.map make_one_of_variant (List.combine unique_names schemas_or_refs)
+    |> String.concat "\n"
+  in
   sprintf "[\n%s\n] <json adapter.ocaml=\"Jsonschema2atd_runtime.Adapter.One_of\">" variants
 
 and process_string_enums _state enums =
@@ -307,8 +352,10 @@ and process_string_enums _state enums =
         )
       enums
   in
-  let make_enum_variant value = sprintf {|  | %s <json name="%s">|} (variant_name value) value in
-  let variants = List.map make_enum_variant enums |> String.concat "\n" in
+  let raw_names = List.map variant_name enums in
+  let unique_names = dedup_names raw_names in
+  let make_enum_variant (vname, value) = sprintf {|  | %s <json name="%s">|} vname value in
+  let variants = List.map make_enum_variant (List.combine unique_names enums) |> String.concat "\n" in
   sprintf "[\n%s\n]" variants
 
 let process_schemas state (schemas : (string * schema or_ref) list) =

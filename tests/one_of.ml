@@ -61,11 +61,10 @@ let nested_one_of_test _ =
       ?inline: string option;
     }
 
-    type variableModelQuery = [
+    type variableModelQuery <doc text="Query used to fetch values for a variable"> = [
       | String of string
       | Json of variableModelQueryJson
     ] <json adapter.ocaml="Jsonschema2atd_runtime.Adapter.One_of">
-      <doc text="Query used to fetch values for a variable">
 
     type variableModel = {
       ?query <doc text="Query used to fetch values for a variable">: variableModelQuery option;

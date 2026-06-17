@@ -62,6 +62,7 @@ let is_keyword word = List.mem word reserved_keywords
 
 let sanitize_name str =
   let str' = String.uncapitalize_ascii str in
+  let str' = Str.global_replace (Str.regexp "+") "plus" str' in
   let str' = Str.global_replace (Str.regexp "[^a-zA-Z_1-9]") "" str' in
   if is_keyword str' then str' ^ "_" else str'
 
