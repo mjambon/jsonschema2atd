@@ -336,7 +336,7 @@ and process_one_of state ~ancestors (schemas_or_refs : schema or_ref list) =
     List.map make_one_of_variant (List.combine unique_names schemas_or_refs)
     |> String.concat "\n"
   in
-  sprintf "[\n%s\n] <json adapter.ocaml=\"Jsonschema2atd_runtime.Adapter.One_of\">" variants
+  sprintf "[\n%s\n] <json adapter.ocaml=\"Jsonschema2atd_runtime.Adapter.One_of\"> <ocaml repr=\"classic\">" variants
 
 and process_string_enums _state enums =
   let enums =
@@ -356,7 +356,7 @@ and process_string_enums _state enums =
   let unique_names = dedup_names raw_names in
   let make_enum_variant (vname, value) = sprintf {|  | %s <json name="%s">|} vname value in
   let variants = List.map make_enum_variant (List.combine unique_names enums) |> String.concat "\n" in
-  sprintf "[\n%s\n]" variants
+  sprintf "[\n%s\n] <ocaml repr=\"classic\">" variants
 
 let process_schemas state (schemas : (string * schema or_ref) list) =
   List.fold_left
